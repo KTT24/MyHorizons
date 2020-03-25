@@ -6,6 +6,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using MyHorizons.Avalonia.Utility;
 using MyHorizons.Data;
 using MyHorizons.Data.Save;
 using System;
@@ -29,6 +30,8 @@ namespace MyHorizons.Avalonia
 
         private Grid MinimizeGrid;
         private Button MinimizeButton;
+
+        private bool playerLoading = false;
 
         public MainWindow()
         {
@@ -75,19 +78,52 @@ namespace MyHorizons.Avalonia
 
             PlatformImpl.WindowStateChanged = WindowStateChanged;
 
+            // Set up connections
+            SetupPlayerTabConnections();
+
             var openBtn = this.FindControl<Button>("OpenSaveButton");
             openBtn.Click += OpenFileButton_Click;
+
+            this.FindControl<Button>("SaveButton").Click += SaveButton_Click;
 
             openBtn.IsVisible = true;
             this.FindControl<TabControl>("EditorTabControl").IsVisible = false;
             
         }
 
+        private void SetupPlayerTabConnections()
+        {
+            this.FindControl<TextBox>("PlayerNameBox").GetObservable(TextBox.TextProperty).Subscribe(text =>
+            {
+                if (!playerLoading && selectedPlayer != null)
+                    selectedPlayer.Name = text;
+            });
+            this.FindControl<NumericUpDown>("WalletBox").ValueChanged += (o, e) =>
+            {
+                if (!playerLoading && selectedPlayer != null)
+                    selectedPlayer.Wallet.Set((uint)e.NewValue);
+            };
+            this.FindControl<NumericUpDown>("BankBox").ValueChanged += (o, e) =>
+            {
+                if (!playerLoading && selectedPlayer != null)
+                    selectedPlayer.Bank.Set((uint)e.NewValue);
+            };
+            this.FindControl<NumericUpDown>("NookMilesBox").ValueChanged += (o, e) =>
+            {
+                if (!playerLoading && selectedPlayer != null)
+                    selectedPlayer.NookMiles.Set((uint)e.NewValue);
+            };
+        }
+
         private void SetupSide(string name, StandardCursorType cursor, WindowEdge edge)
         {
             var ctl = this.FindControl<Control>(name);
             ctl.Cursor = new Cursor(cursor);
-            ctl.PointerPressed += (i, e) => PlatformImpl?.BeginResizeDrag(edge, e);
+            ctl.PointerPressed += (i, e) =>
+            {
+                if (WindowState == WindowState.Normal)
+                    PlatformImpl?.BeginResizeDrag(edge, e);
+            };
         }
 
         private void WindowStateChanged(WindowState state)
@@ -129,10 +165,29 @@ namespace MyHorizons.Avalonia
 
         private void LoadPlayer(Player player)
         {
+            playerLoading = true;
             selectedPlayer = player;
             this.FindControl<TextBox>("PlayerNameBox").Text = player.Name;
             this.FindControl<NumericUpDown>("WalletBox").Value = player.Wallet.Decrypt();
+            this.FindControl<NumericUpDown>("BankBox").Value = player.Bank.Decrypt();
             this.FindControl<NumericUpDown>("NookMilesBox").Value = player.NookMiles.Decrypt();
+            playerLoading = false;
+        }
+
+        private void LoadVillagers()
+        {
+            var villagerControl = this.FindControl<StackPanel>("VillagerPanel");
+            for (var i = 0; i < 10; i++)
+            {
+                var villager = saveFile.Villagers[i];
+                var img = new Image
+                {
+                    Width = 64,
+                    Height = 64,
+                    Source = ImageLoadingUtil.LoadImageForVillager(villager)
+                };
+                villagerControl.Children.Add(img);
+            }
         }
 
         private async void OpenFileButton_Click(object o, RoutedEventArgs e)
@@ -185,8 +240,10 @@ namespace MyHorizons.Avalonia
                     {
                         (o as Button).IsVisible = false;
                         this.FindControl<TabControl>("EditorTabControl").IsVisible = true;
+                        this.FindControl<Grid>("BottomBar").IsVisible = true;
                         AddPlayerImages();
                         LoadPlayer(saveFile.GetPlayerSaves()[0].Player);
+                        LoadVillagers();
                     }
                     else
                     {
@@ -194,6 +251,12 @@ namespace MyHorizons.Avalonia
                     }
                 }
             }
+        }
+
+        private void SaveButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (saveFile != null)
+                saveFile.Save(null);
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();

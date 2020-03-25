@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace MyHorizons.Data.Save
@@ -11,11 +12,12 @@ namespace MyHorizons.Data.Save
         public static SaveBase Singleton() => _saveFile;
 
         public int NumPlayers => _playerSaves.Count;
+        public readonly Villager[] Villagers = new Villager[10];
 
         public MainSaveFile(in string headerPath, in string filePath)
         {
             // TODO: IProgress<float> needs to be passed to load
-            if (AcceptsFile(headerPath, filePath) && Load(File.ReadAllBytes(headerPath), File.ReadAllBytes(filePath), null))
+            if (AcceptsFile(headerPath, filePath) && Load(headerPath, filePath, null))
             {
                 _saveFile = this;
 
@@ -27,12 +29,31 @@ namespace MyHorizons.Data.Save
                     if (playerSave.Valid)
                         _playerSaves.Add(playerSave);
                 }
+
+                // Load villagers
+                for (var i = 0; i < 10; i++)
+                    Villagers[i] = new Villager(i);
             }
         }
 
         public override bool AcceptsFile(in string headerPath, in string filePath)
         {
             return base.AcceptsFile(headerPath, filePath) && new FileInfo(filePath).Length == RevisionManager.GetSaveFileSizes(_revision)?.Size_main;
+        }
+
+        public override bool Save(in string filePath, IProgress<float> progress)
+        {
+            if (base.Save(filePath, progress))
+            {
+                var dir = Path.GetDirectoryName(filePath);
+                foreach (var playerSave in _playerSaves)
+                {
+                    if (!playerSave.Save(Path.Combine(dir, $"Villager{playerSave.Index}")))
+                        return false;
+                }
+                return true;
+            }
+            return false;
         }
 
         public Player GetPlayer(int index) => _playerSaves[index].Player;
